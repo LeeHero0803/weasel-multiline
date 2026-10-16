@@ -80,94 +80,176 @@ void HorizontalLayout::DoLayout(CDCHandle dc, PDWR pDWR) {
   int height_of_rows[MAX_CANDIDATES_COUNT] = {0};    // height of every row
   int row_of_candidate[MAX_CANDIDATES_COUNT] = {0};  // row info of every cand
   int mintop_of_rows[MAX_CANDIDATES_COUNT] = {0};
+  const int columns = _context.cinfo.row_page_size;
+  const bool expanded = columns > 0 && columns <= 10;
   // only when there are candidates
   if (candidates_count) {
-    w = offsetX + real_margin_x;
-    for (auto i = 0; i < candidates_count && i < MAX_CANDIDATES_COUNT; ++i) {
-      int current_cand_width = 0;
-      if (i > 0)
-        w += _style.candidate_spacing;
-      if (id == i)
-        w += base_offset;
-      /* Label */
-      std::wstring label =
-          GetLabelText(labels, i, _style.label_text_format.c_str());
-      GetTextSizeDW(label, label.length(), pDWR->pLabelTextFormat, pDWR, &size);
-      _candidateLabelRects[i].SetRect(w, height, w + size.cx * labelFontValid,
-                                      height + size.cy);
-      w += size.cx * labelFontValid;
-      current_cand_width += size.cx * labelFontValid;
+    if (expanded) {
+      const int count = min(candidates_count, MAX_CANDIDATES_COUNT);
+      const int rows = (count + columns - 1) / columns;
+      CSize text_sizes[MAX_CANDIDATES_COUNT];
+      CSize comment_sizes[MAX_CANDIDATES_COUNT];
+      int column_widths[10] = {0};
+      int column_lefts[10] = {0};
+      int label_width = 0, label_height = 0;
+      std::vector<Text> reserved_labels;
+      for (int col = 0; col < columns; ++col)
+        reserved_labels.emplace_back(std::to_wstring((col + 1) % 10));
+      for (int i = 0; i < count; ++i) {
+        if (!labels[i].str.empty())
+          reserved_labels[i % columns] = labels[i];
+      }
+      // Measure a real selection label even on preview rows. The label space
+      // and mark gutter belong to every row, independent of which row is active.
+      for (int col = 0; col < columns; ++col) {
+        const auto label = GetLabelText(reserved_labels, col,
+                                       _style.label_text_format.c_str());
+        GetTextSizeDW(label, label.length(), pDWR->pLabelTextFormat, pDWR, &size);
+        label_width = max(label_width, size.cx * labelFontValid);
+        label_height = max(label_height, size.cy * labelFontValid);
+      }
+      for (int i = 0; i < count; ++i) {
+        const int col = i % columns, row = i / columns;
+        GetTextSizeDW(candidates[i].str, candidates[i].str.length(),
+                      pDWR->pTextFormat, pDWR, &text_sizes[i]);
+        comment_sizes[i].SetSize(0, 0);
+        if (!comments[i].str.empty() && cmtFontValid &&
+            ((_style.comment_text_color | _style.hilited_comment_text_color) &
+             0xff000000)) {
+          GetTextSizeDW(comments[i].str, comments[i].str.length(),
+                        pDWR->pCommentTextFormat, pDWR, &comment_sizes[i]);
+        }
+        const int comment_width = comment_sizes[i].cx > 0
+                                      ? _style.hilite_spacing + comment_sizes[i].cx
+                                      : 0;
+        const int cell_width = label_width + _style.hilite_spacing +
+                               text_sizes[i].cx * textFontValid + comment_width;
+        column_widths[col] = max(column_widths[col], cell_width);
+        height_of_rows[row] = max(height_of_rows[row], label_height);
+        height_of_rows[row] = max(height_of_rows[row],
+                                  text_sizes[i].cy * textFontValid);
+        height_of_rows[row] = max(height_of_rows[row], comment_sizes[i].cy);
+      }
+      w = offsetX + real_margin_x + base_offset;
+      for (int col = 0; col < columns; ++col) {
+        column_lefts[col] = w;
+        w += column_widths[col];
+        if (col + 1 < columns)
+          w += _style.candidate_spacing;
+      }
+      max_width_of_rows = w;
+      for (int row = 0; row < rows; ++row) {
+        mintop_of_rows[row] = height;
+        for (int col = 0; col < columns; ++col) {
+          const int i = row * columns + col;
+          if (i >= count)
+            break;
+          int x = column_lefts[col];
+          _candidateLabelRects[i].SetRect(x, height, x + label_width,
+                                          height + label_height);
+          x += label_width + _style.hilite_spacing;
+          _candidateTextRects[i].SetRect(x, height,
+                                         x + text_sizes[i].cx * textFontValid,
+                                         height + text_sizes[i].cy * textFontValid);
+          x = _candidateTextRects[i].right;
+          if (comment_sizes[i].cx > 0)
+            x += _style.hilite_spacing;
+          _candidateCommentRects[i].SetRect(x, height, x + comment_sizes[i].cx,
+                                            height + comment_sizes[i].cy);
+          row_of_candidate[i] = row;
+        }
+        height += height_of_rows[row] + _style.candidate_spacing;
+      }
+      row_cnt = rows - 1;
+    } else {
+      w = offsetX + real_margin_x;
+      for (auto i = 0; i < candidates_count && i < MAX_CANDIDATES_COUNT; ++i) {
+        int current_cand_width = 0;
+        if (i > 0)
+          w += _style.candidate_spacing;
+        if (id == i)
+          w += base_offset;
+        /* Label */
+        std::wstring label =
+            GetLabelText(labels, i, _style.label_text_format.c_str());
+        GetTextSizeDW(label, label.length(), pDWR->pLabelTextFormat, pDWR, &size);
+        _candidateLabelRects[i].SetRect(w, height, w + size.cx * labelFontValid,
+                                        height + size.cy);
+        w += size.cx * labelFontValid;
+        current_cand_width += size.cx * labelFontValid;
 
-      /* Text */
-      w += _style.hilite_spacing;
-      const std::wstring& text = candidates.at(i).str;
-      GetTextSizeDW(text, text.length(), pDWR->pTextFormat, pDWR, &size);
-      _candidateTextRects[i].SetRect(w, height, w + size.cx * textFontValid,
-                                     height + size.cy);
-      w += size.cx * textFontValid;
-      current_cand_width += (size.cx + _style.hilite_spacing) * textFontValid;
-
-      /* Comment */
-      bool cmtFontNotTrans =
-          (i == id && (_style.hilited_comment_text_color & 0xff000000)) ||
-          (i != id && (_style.comment_text_color & 0xff000000));
-      if (!comments.at(i).str.empty() && cmtFontValid && cmtFontNotTrans) {
-        const std::wstring& comment = comments.at(i).str;
-        GetTextSizeDW(comment, comment.length(), pDWR->pCommentTextFormat, pDWR,
-                      &size);
+        /* Text */
         w += _style.hilite_spacing;
-        _candidateCommentRects[i].SetRect(w, height, w + size.cx * cmtFontValid,
-                                          height + size.cy);
-        w += size.cx * cmtFontValid;
-        current_cand_width += (size.cx + _style.hilite_spacing) * cmtFontValid;
-      } else /* Used for highlighted candidate calculation below */
-        _candidateCommentRects[i].SetRect(w, height, w, height + size.cy);
+        const std::wstring& text = candidates.at(i).str;
+        GetTextSizeDW(text, text.length(), pDWR->pTextFormat, pDWR, &size);
+        _candidateTextRects[i].SetRect(w, height, w + size.cx * textFontValid,
+                                       height + size.cy);
+        w += size.cx * textFontValid;
+        current_cand_width += (size.cx + _style.hilite_spacing) * textFontValid;
 
-      int base_left = (i == id) ? _candidateLabelRects[i].left - base_offset
-                                : _candidateLabelRects[i].left;
-      // if not the first candidate of current row, and current candidate's
-      // right > _style.max_width
-      if (_style.max_width > 0 && (base_left > real_margin_x + offsetX) &&
-          (_candidateCommentRects[i].right - offsetX + real_margin_x >
-           _style.max_width)) {
-        // max_width_of_rows current row
-        max_width_of_rows =
-            max(max_width_of_rows, _candidateCommentRects[i - 1].right);
-        w = offsetX + real_margin_x + (i == id ? base_offset : 0);
-        int ofx = w - _candidateLabelRects[i].left;
-        int ofy = height_of_rows[row_cnt] + _style.candidate_spacing;
-        // offset rects to next row
-        _candidateLabelRects[i].OffsetRect(ofx, ofy);
-        _candidateTextRects[i].OffsetRect(ofx, ofy);
-        _candidateCommentRects[i].OffsetRect(ofx, ofy);
-        // max width of next row, if it's the last candidate, make sure
-        // max_width_of_rows calc right
-        max_width_of_rows =
-            max(max_width_of_rows, _candidateCommentRects[i].right);
+        /* Comment */
+        bool cmtFontNotTrans =
+            (i == id && (_style.hilited_comment_text_color & 0xff000000)) ||
+            (i != id && (_style.comment_text_color & 0xff000000));
+        if (!comments.at(i).str.empty() && cmtFontValid && cmtFontNotTrans) {
+          const std::wstring& comment = comments.at(i).str;
+          GetTextSizeDW(comment, comment.length(), pDWR->pCommentTextFormat, pDWR,
+                        &size);
+          w += _style.hilite_spacing;
+          _candidateCommentRects[i].SetRect(w, height, w + size.cx * cmtFontValid,
+                                            height + size.cy);
+          w += size.cx * cmtFontValid;
+          current_cand_width += (size.cx + _style.hilite_spacing) * cmtFontValid;
+        } else /* Used for highlighted candidate calculation below */
+          _candidateCommentRects[i].SetRect(w, height, w, height + size.cy);
+
+        int base_left = (i == id) ? _candidateLabelRects[i].left - base_offset
+                                  : _candidateLabelRects[i].left;
+        // if not the first candidate of current row, and current candidate's
+        // right > _style.max_width
+        if (_style.max_width > 0 && (base_left > real_margin_x + offsetX) &&
+            (_candidateCommentRects[i].right - offsetX + real_margin_x >
+             _style.max_width)) {
+          // max_width_of_rows current row
+          max_width_of_rows =
+              max(max_width_of_rows, _candidateCommentRects[i - 1].right);
+          w = offsetX + real_margin_x + (i == id ? base_offset : 0);
+          int ofx = w - _candidateLabelRects[i].left;
+          int ofy = height_of_rows[row_cnt] + _style.candidate_spacing;
+          // offset rects to next row
+          _candidateLabelRects[i].OffsetRect(ofx, ofy);
+          _candidateTextRects[i].OffsetRect(ofx, ofy);
+          _candidateCommentRects[i].OffsetRect(ofx, ofy);
+          // max width of next row, if it's the last candidate, make sure
+          // max_width_of_rows calc right
+          max_width_of_rows =
+              max(max_width_of_rows, _candidateCommentRects[i].right);
+          mintop_of_rows[row_cnt] = height;
+          height += ofy;
+          // re calc rect position, decrease offsetX for origin
+          w += current_cand_width;
+          row_cnt++;
+        } else
+          max_width_of_rows = max(max_width_of_rows, w);
+        // calculate height of current row is the max of three rects
         mintop_of_rows[row_cnt] = height;
-        height += ofy;
-        // re calc rect position, decrease offsetX for origin
-        w += current_cand_width;
-        row_cnt++;
-      } else
-        max_width_of_rows = max(max_width_of_rows, w);
-      // calculate height of current row is the max of three rects
-      mintop_of_rows[row_cnt] = height;
-      height_of_rows[row_cnt] =
-          max(height_of_rows[row_cnt], _candidateLabelRects[i].Height());
-      height_of_rows[row_cnt] =
-          max(height_of_rows[row_cnt], _candidateTextRects[i].Height());
-      height_of_rows[row_cnt] =
-          max(height_of_rows[row_cnt], _candidateCommentRects[i].Height());
-      // set row info of current candidate
-      row_of_candidate[i] = row_cnt;
+        height_of_rows[row_cnt] =
+            max(height_of_rows[row_cnt], _candidateLabelRects[i].Height());
+        height_of_rows[row_cnt] =
+            max(height_of_rows[row_cnt], _candidateTextRects[i].Height());
+        height_of_rows[row_cnt] =
+            max(height_of_rows[row_cnt], _candidateCommentRects[i].Height());
+        // set row info of current candidate
+        row_of_candidate[i] = row_cnt;
+      }
     }
 
     // reposition for alignment, exp when rect height not equal to
     // height_of_rows
     for (auto i = 0; i < candidates_count && i < MAX_CANDIDATES_COUNT; ++i) {
-      int base_left = (i == id) ? _candidateLabelRects[i].left - base_offset
-                                : _candidateLabelRects[i].left;
+      int base_left = _candidateLabelRects[i].left;
+      if (expanded ? i % columns == 0 : i == id)
+        base_left -= base_offset;
       _candidateRects[i].SetRect(base_left, mintop_of_rows[row_of_candidate[i]],
                                  _candidateCommentRects[i].right,
                                  mintop_of_rows[row_of_candidate[i]] +
@@ -219,6 +301,12 @@ void HorizontalLayout::DoLayout(CDCHandle dc, PDWR pDWR) {
     }
   }
   _highlightRect = _candidateRects[id];
+  if (expanded && candidates_count) {
+    const int row = row_of_candidate[id];
+    _highlightRect.SetRect(offsetX + real_margin_x, mintop_of_rows[row],
+                            width - real_margin_x,
+                            mintop_of_rows[row] + height_of_rows[row]);
+  }
   UpdateStatusIconLayout(&width, &height);
   _contentSize.SetSize(width + offsetX, height + 2 * offsetY);
   _contentRect.SetRect(0, 0, _contentSize.cx, _contentSize.cy);

@@ -311,8 +311,10 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
   if (m_disabled)
     return FALSE;
   RimeSessionId session_id = to_session_id(ipc_id);
-  Bool handled = rime_api->process_key(session_id, keyEvent.keycode,
-                                       expand_ibus_modifier(keyEvent.mask));
+  Bool handled = _ProcessCandidateRowKey(keyEvent, ipc_id);
+  if (!handled)
+    handled = rime_api->process_key(session_id, keyEvent.keycode,
+                                    expand_ibus_modifier(keyEvent.mask));
   // vim_mode when keydown only
   if (!handled && !(keyEvent.mask & ibus::Modifier::RELEASE_MASK)) {
     bool isVimBackInCommandMode =
@@ -337,6 +339,7 @@ void RimeWithWeaselHandler::CommitComposition(WeaselSessionId ipc_id) {
   DLOG(INFO) << "Commit composition: ipc_id = " << ipc_id;
   if (m_disabled)
     return;
+  get_session_status(ipc_id).candidates_expanded = false;
   rime_api->commit_composition(to_session_id(ipc_id));
   _UpdateUI(ipc_id);
   m_active_session = ipc_id;
@@ -346,6 +349,7 @@ void RimeWithWeaselHandler::ClearComposition(WeaselSessionId ipc_id) {
   DLOG(INFO) << "Clear composition: ipc_id = " << ipc_id;
   if (m_disabled)
     return;
+  get_session_status(ipc_id).candidates_expanded = false;
   rime_api->clear_composition(to_session_id(ipc_id));
   _UpdateUI(ipc_id);
   m_active_session = ipc_id;
@@ -358,7 +362,14 @@ void RimeWithWeaselHandler::SelectCandidateOnCurrentPage(
              << ", index = " << index;
   if (m_disabled)
     return;
-  rime_api->select_candidate_on_current_page(to_session_id(ipc_id), index);
+  const auto& session = get_session_status(ipc_id);
+  if (session.candidates_expanded) {
+    if (index < session.visible_candidate_count)
+      rime_api->select_candidate(to_session_id(ipc_id),
+                                  session.visible_candidate_offset + index);
+  } else {
+    rime_api->select_candidate_on_current_page(to_session_id(ipc_id), index);
+  }
 }
 
 bool RimeWithWeaselHandler::HighlightCandidateOnCurrentPage(
@@ -367,8 +378,14 @@ bool RimeWithWeaselHandler::HighlightCandidateOnCurrentPage(
     EatLine eat) {
   DLOG(INFO) << "highlight candidate on current page, ipc_id = " << ipc_id
              << ", index = " << index;
-  bool res = rime_api->highlight_candidate_on_current_page(
-      to_session_id(ipc_id), index);
+  const auto& session = get_session_status(ipc_id);
+  bool res = session.candidates_expanded
+                 ? index < session.visible_candidate_count &&
+                       rime_api->highlight_candidate(
+                           to_session_id(ipc_id),
+                           session.visible_candidate_offset + index)
+                 : rime_api->highlight_candidate_on_current_page(
+                       to_session_id(ipc_id), index);
   _Respond(ipc_id, eat);
   _UpdateUI(ipc_id);
   return res;
@@ -449,6 +466,7 @@ void RimeWithWeaselHandler::_ReadClientInfo(WeaselSessionId ipc_id,
                                             LPWSTR buffer) {
   std::string app_name;
   std::string client_type;
+  bool supports_multiline = false;
   // parse request text
   wbufferstream bs(buffer, WEASEL_IPC_BUFFER_LENGTH);
   std::wstring line;
@@ -469,8 +487,13 @@ void RimeWithWeaselHandler::_ReadClientInfo(WeaselSessionId ipc_id,
     if (starts_with(line, kClientTypeKey)) {
       client_type = wtou8(line.substr(kClientTypeKey.length()));
     }
+    if (line == L"session.multiline=1")
+      supports_multiline = true;
   }
   SessionStatus& session_status = get_session_status(ipc_id);
+  // Old TSF DLLs may remain loaded until their applications restart. Keep the
+  // original protocol and navigation for those sessions during live upgrades.
+  session_status.supports_multiline = supports_multiline || client_type != "tsf";
   RimeSessionId session_id = session_status.session_id;
   // set app specific options
   if (!app_name.empty()) {
@@ -518,6 +541,153 @@ void RimeWithWeaselHandler::_GetCandidateInfo(CandidateInfo& cinfo,
   cinfo.highlighted = ctx.menu.highlighted_candidate_index;
   cinfo.currentPage = ctx.menu.page_no;
   cinfo.is_last_page = ctx.menu.is_last_page;
+}
+
+bool RimeWithWeaselHandler::_ProcessCandidateRowKey(KeyEvent key,
+                                                    WeaselSessionId ipc_id) {
+  const unsigned modifiers = ibus::SHIFT_MASK | ibus::CONTROL_MASK |
+                             ibus::MOD1_MASK | ibus::SUPER_MASK |
+                             ibus::HYPER_MASK | ibus::META_MASK |
+                             ibus::RELEASE_MASK;
+  auto& session = get_session_status(ipc_id);
+  if ((key.mask & modifiers) ||
+      !session.supports_multiline ||
+      session.style.layout_type != UIStyle::LAYOUT_HORIZONTAL ||
+      (key.keycode != ibus::Down && key.keycode != ibus::Up) ||
+      !RIME_PROVIDED(rime_api, candidate_list_from_index) ||
+      !RIME_PROVIDED(rime_api, highlight_candidate))
+    return false;
+
+  const RimeSessionId id = session.session_id;
+  const char* raw_input = rime_api->get_input(id);
+  const std::string input = raw_input ? raw_input : "";
+  if (input.empty() || rime_api->get_option(id, "ascii_mode")) {
+    session.candidates_expanded = false;
+    return false;
+  }
+  if (session.expanded_input != input)
+    session.candidates_expanded = false;
+  if (key.keycode == ibus::Up && !session.candidates_expanded)
+    return false;
+
+  // Scheme switching is also represented by a candidate menu. Keep all its
+  // original navigation semantics rather than expanding it as input words.
+  RIME_STRUCT(RimeStatus, status);
+  if (!rime_api->get_status(id, &status))
+    return false;
+  const bool switcher = status.schema_id &&
+                        std::string(status.schema_id) == ".default";
+  rime_api->free_status(&status);
+  if (switcher) {
+    session.candidates_expanded = false;
+    return false;
+  }
+
+  RIME_STRUCT(RimeContext, ctx);
+  if (!rime_api->get_context(id, &ctx))
+    return false;
+  const bool has_menu = ctx.composition.length > 0 && ctx.menu.num_candidates > 0;
+  const bool last_page = !!ctx.menu.is_last_page;
+  const int page = ctx.menu.page_no;
+  rime_api->free_context(&ctx);
+  if (!has_menu)
+    return false;
+
+  if (key.keycode == ibus::Down) {
+    if (!session.candidates_expanded && last_page)
+      return false;  // A single page retains the original candidate navigation.
+    if (!last_page && rime_api->change_page(id, False)) {
+      session.candidates_expanded = true;
+      session.expanded_input = input;
+      return true;
+    }
+    return session.candidates_expanded;  // Do not walk past the last row.
+  }
+
+  if (page > 0 && rime_api->change_page(id, True)) {
+    if (page == 1)
+      session.candidates_expanded = false;
+    return true;
+  }
+  session.candidates_expanded = false;
+  return true;
+}
+
+void RimeWithWeaselHandler::_ExpandCandidateInfo(CandidateInfo& cinfo,
+                                                 RimeContext& ctx,
+                                                 WeaselSessionId ipc_id) {
+  auto& session = get_session_status(ipc_id);
+  session.visible_candidate_offset = 0;
+  session.visible_candidate_count = 0;
+  const char* input = rime_api->get_input(session.session_id);
+  if (!input || !ctx.composition.length || session.expanded_input != input ||
+      !ctx.menu.num_candidates ||
+      session.style.layout_type != UIStyle::LAYOUT_HORIZONTAL)
+    session.candidates_expanded = false;
+  if (!session.candidates_expanded) {
+    session.first_visible_page = 0;
+    return;
+  }
+
+  const int page_size = ctx.menu.page_size;
+  if (page_size <= 0 || page_size > 10) {
+    session.candidates_expanded = false;
+    return;
+  }
+  const int visible_pages = 5;
+  // Keep the current viewport until selection crosses one of its edges.
+  // Advancing past the bottom reveals one new row instead of another block.
+  int first_page = session.first_visible_page;
+  if (ctx.menu.page_no < first_page)
+    first_page = ctx.menu.page_no;
+  else if (ctx.menu.page_no >= first_page + visible_pages)
+    first_page = ctx.menu.page_no - visible_pages + 1;
+  session.first_visible_page = first_page;
+  const int first_index = first_page * page_size;
+  const int active_start = ctx.menu.page_no * page_size;
+  CandidateInfo expanded;
+  expanded.currentPage = cinfo.currentPage;
+  expanded.is_last_page = cinfo.is_last_page;
+  expanded.row_page_size = page_size;
+
+  RimeCandidateListIterator iterator = {0};
+  if (!rime_api->candidate_list_begin(session.session_id, &iterator)) {
+    session.candidates_expanded = false;
+    return;
+  }
+  if (!rime_api->candidate_list_from_index(session.session_id, &iterator,
+                                           first_index)) {
+    rime_api->candidate_list_end(&iterator);
+    session.candidates_expanded = false;
+    return;
+  }
+  for (int i = 0; i < visible_pages * page_size &&
+                  rime_api->candidate_list_next(&iterator);
+       ++i) {
+    expanded.candies.emplace_back(
+        escape_string(u8tow(iterator.candidate.text)));
+    expanded.comments.emplace_back(iterator.candidate.comment
+                                       ? escape_string(u8tow(iterator.candidate.comment))
+                                       : L"");
+    const int local_index = iterator.index - active_start;
+    // Only the current engine page has selection keys. Other rows are previews.
+    expanded.labels.emplace_back(local_index >= 0 &&
+                                         local_index < (int)cinfo.labels.size()
+                                     ? cinfo.labels[local_index].str
+                                     : L"");
+  }
+  rime_api->candidate_list_end(&iterator);
+  expanded.highlighted = active_start - first_index + cinfo.highlighted;
+  if (expanded.candies.size() <= (size_t)page_size ||
+      expanded.highlighted < 0 ||
+      expanded.highlighted >= (int)expanded.candies.size()) {
+    session.candidates_expanded = false;
+    return;
+  }
+
+  session.visible_candidate_offset = first_index;
+  session.visible_candidate_count = expanded.candies.size();
+  cinfo = std::move(expanded);
 }
 
 void RimeWithWeaselHandler::StartMaintenance() {
@@ -608,6 +778,7 @@ void RimeWithWeaselHandler::_UpdateUI(WeaselSessionId ipc_id) {
 void RimeWithWeaselHandler::_LoadSchemaSpecificSettings(
     WeaselSessionId ipc_id,
     const std::string& schema_id) {
+  get_session_status(ipc_id).candidates_expanded = false;
   if (!m_ui)
     return;
   RimeConfig config;
@@ -803,6 +974,8 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id, EatLine eat) {
   RIME_STRUCT(RimeStatus, status);
   if (rime_api->get_status(session_id, &status)) {
     is_composing = !!status.is_composing;
+    if (status.schema_id && std::string(status.schema_id) == ".default")
+      session_status.candidates_expanded = false;
     actions.insert("status");
     messages.push_back(std::string("status.ascii_mode=") +
                        std::to_string(status.is_ascii_mode) + '\n');
@@ -828,6 +1001,8 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id, EatLine eat) {
 
   RIME_STRUCT(RimeContext, ctx);
   if (rime_api->get_context(session_id, &ctx)) {
+    if (!ctx.composition.length || !ctx.menu.num_candidates)
+      session_status.candidates_expanded = false;
     if (is_composing) {
       actions.insert("ctx");
       switch (session_status.style.preedit_type) {
@@ -911,10 +1086,14 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id, EatLine eat) {
       std::wstringstream ss;
       boost::archive::text_woarchive oa(ss);
       _GetCandidateInfo(cinfo, ctx);
+      _ExpandCandidateInfo(cinfo, ctx, ipc_id);
 
       oa << cinfo;
 
       messages.push_back(std::string("ctx.cand=") + wtou8(ss.str()) + '\n');
+      if (session_status.supports_multiline)
+        messages.push_back(std::string("ctx.row_page_size=") +
+                           std::to_string(cinfo.row_page_size) + '\n');
     }
     rime_api->free_context(&ctx);
   }
@@ -1472,6 +1651,13 @@ void RimeWithWeaselHandler::_GetContext(Context& weasel_context,
     if (ctx.menu.num_candidates) {
       CandidateInfo& cinfo(weasel_context.cinfo);
       _GetCandidateInfo(cinfo, ctx);
+      // IMM uses the server's window; TSF receives the same expansion in _Respond.
+      for (const auto& pair : m_session_status_map) {
+        if (pair.second.session_id == session_id) {
+          _ExpandCandidateInfo(cinfo, ctx, pair.first);
+          break;
+        }
+      }
     }
     rime_api->free_context(&ctx);
   }

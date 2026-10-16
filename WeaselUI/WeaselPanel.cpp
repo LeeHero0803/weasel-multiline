@@ -733,6 +733,13 @@ bool WeaselPanel::_DrawPreeditBack(const Text& text,
 
 bool WeaselPanel::_DrawCandidates(CDCHandle& dc, bool back) {
   bool drawn = false;
+  const int columns = m_ctx.cinfo.row_page_size;
+  const bool expanded = columns > 0 && columns <= 10 &&
+                        m_style.layout_type == UIStyle::LAYOUT_HORIZONTAL;
+  const auto is_active = [&](int index) {
+    return expanded ? index / columns == m_ctx.cinfo.highlighted / columns
+                    : index == m_ctx.cinfo.highlighted;
+  };
   const std::vector<Text>& candidates(m_ctx.cinfo.candies);
   const std::vector<Text>& comments(m_ctx.cinfo.comments);
   const std::vector<Text>& labels(m_ctx.cinfo.labels);
@@ -753,7 +760,7 @@ bool WeaselPanel::_DrawCandidates(CDCHandle& dc, bool back) {
     // if candidate_shadow_color not transparent, draw candidate shadow first
     if (COLORNOTTRANSPARENT(m_style.candidate_shadow_color)) {
       for (auto i = 0; i < m_candidateCount && i < MAX_CANDIDATES_COUNT; ++i) {
-        if (i == m_ctx.cinfo.highlighted || i == m_hoverIndex)
+        if (is_active(i) || i == m_hoverIndex)
           continue;  // draw non hilited candidates only
         rect = m_layout->GetCandidateRect((int)i);
         IsToRoundStruct rd = m_layout->GetRoundInfo(i);
@@ -772,7 +779,7 @@ bool WeaselPanel::_DrawCandidates(CDCHandle& dc, bool back) {
     if ((COLORNOTTRANSPARENT(m_style.candidate_back_color) ||
          COLORNOTTRANSPARENT(m_style.candidate_border_color))) {
       for (auto i = 0; i < m_candidateCount && i < MAX_CANDIDATES_COUNT; ++i) {
-        if (i == m_ctx.cinfo.highlighted || i == m_hoverIndex)
+        if (is_active(i) || i == m_hoverIndex)
           continue;
         rect = m_layout->GetCandidateRect((int)i);
         IsToRoundStruct rd = m_layout->GetRoundInfo(i);
@@ -789,7 +796,7 @@ bool WeaselPanel::_DrawCandidates(CDCHandle& dc, bool back) {
       }
     }
     // draw semi-hilite background and shadow
-    if (m_hoverIndex >= 0) {
+    if (m_hoverIndex >= 0 && (!expanded || !is_active(m_hoverIndex))) {
       rect = m_layout->GetCandidateRect(m_hoverIndex);
       IsToRoundStruct rd = m_layout->GetRoundInfo(m_hoverIndex);
       if (m_istorepos) {
@@ -809,6 +816,8 @@ bool WeaselPanel::_DrawCandidates(CDCHandle& dc, bool back) {
       rect = m_layout->GetHighlightRect();
       bool markSt = bar_scale_ == 1.0 || (!m_style.mark_text.empty());
       IsToRoundStruct rd = m_layout->GetRoundInfo(m_ctx.cinfo.highlighted);
+      if (expanded)
+        rd = IsToRoundStruct();
       if (m_istorepos) {
         rect.OffsetRect(0, m_offsetys[m_ctx.cinfo.highlighted]);
         ReconfigRoundInfo(rd, m_ctx.cinfo.highlighted, m_candidateCount);
@@ -859,7 +868,7 @@ bool WeaselPanel::_DrawCandidates(CDCHandle& dc, bool back) {
     // begin draw candidate texts
     int label_text_color, candidate_text_color, comment_text_color;
     for (auto i = 0; i < m_candidateCount && i < MAX_CANDIDATES_COUNT; ++i) {
-      if (i == m_ctx.cinfo.highlighted || i == m_hoverIndex) {
+      if (is_active(i) || i == m_hoverIndex) {
         label_text_color = m_style.hilited_label_text_color;
         candidate_text_color = m_style.hilited_candidate_text_color;
         comment_text_color = m_style.hilited_comment_text_color;

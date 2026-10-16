@@ -29,6 +29,12 @@ struct SessionStatus {
   RimeStatus status;
   bool __synced;
   RimeSessionId session_id;
+  bool candidates_expanded = false;
+  bool supports_multiline = false;
+  std::string expanded_input;
+  int first_visible_page = 0;
+  size_t visible_candidate_offset = 0;
+  size_t visible_candidate_count = 0;
 };
 typedef std::map<DWORD, SessionStatus> SessionStatusMap;
 typedef DWORD WeaselSessionId;
@@ -76,6 +82,11 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   bool _Respond(WeaselSessionId ipc_id, EatLine eat);
   void _ReadClientInfo(WeaselSessionId ipc_id, LPWSTR buffer);
   void _GetCandidateInfo(weasel::CandidateInfo& cinfo, RimeContext& ctx);
+  void _ExpandCandidateInfo(weasel::CandidateInfo& cinfo,
+                            RimeContext& ctx,
+                            WeaselSessionId ipc_id);
+  bool _ProcessCandidateRowKey(weasel::KeyEvent key,
+                               WeaselSessionId ipc_id);
   void _GetStatus(weasel::Status& stat,
                   WeaselSessionId ipc_id,
                   weasel::Context& ctx);

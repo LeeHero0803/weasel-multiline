@@ -1,4 +1,25 @@
-﻿【小狼毫】輸入法
+# Weasel Multiline · 小狼毫多行候选
+
+[rime/weasel](https://github.com/rime/weasel) 的定制 fork，基于 0.17.4。
+
+按下键展开五行候选；上下切换整行、数字选词；底部和顶部逐行滚动。
+固定编号预留与列对齐，沿用小狼毫字体、配色和内嵌拼音。
+附带矩形皮肤、万象上下文调频模块、基础词库快照，上屏自动联想关闭。
+
+- [功能和验证](docs/MULTILINE.md)
+- [构建说明](docs/BUILD_MULTILINE.md)
+- [Rime 配置与基础词库](rime-integration/README.md)
+- [上游词库增量更新](docs/DICTIONARY_UPDATES.md)
+- [来源与许可证](THIRD_PARTY_NOTICES.md)
+
+源码基线：`9cc96e20dc71b80876b12f689bb5863c76c2a7ed`。
+保存版本：`0.17.4-multiline.3`。
+
+---
+
+## 上游项目说明
+
+【小狼毫】輸入法
 ================
 
 基於 中州韻輸入法引擎／Rime Input Method Engine 等開源技術

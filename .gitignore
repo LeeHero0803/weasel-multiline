@@ -56,3 +56,12 @@ arm64x_wrapper/*.dll
 arm64x_wrapper/*.ime
 arm64x_wrapper/*.lib
 arm64x_wrapper/*.exp
+# Local export/build state
+*.userdb/
+/tools/rime/.cache/
+
+# Personal data belongs in a separate private backup repository.
+/rime-integration/personal/
+*.userdb.txt
+*.export.txt
+/custom_phrase.txt

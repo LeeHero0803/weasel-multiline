@@ -186,6 +186,7 @@ bool ClientImpl::_WriteClientInfo() {
   channel << L"action=session\n";
   channel << L"session.client_app=" << app_name.c_str() << L"\n";
   channel << L"session.client_type=" << (is_ime ? L"ime" : L"tsf") << L"\n";
+  channel << L"session.multiline=1\n";
   channel << L".\n";
   return true;
 }

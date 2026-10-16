@@ -74,12 +74,14 @@ struct CandidateInfo {
     totalPages = 0;
     highlighted = 0;
     is_last_page = false;
+    row_page_size = 0;
   }
   void clear() {
     currentPage = 0;
     totalPages = 0;
     highlighted = 0;
     is_last_page = false;
+    row_page_size = 0;
     candies.clear();
     labels.clear();
   }
@@ -87,6 +89,7 @@ struct CandidateInfo {
   bool operator==(const CandidateInfo& ci) {
     if (currentPage != ci.currentPage || totalPages != ci.totalPages ||
         highlighted != ci.highlighted || is_last_page != ci.is_last_page ||
+        row_page_size != ci.row_page_size ||
         notequal(candies, ci.candies) || notequal(comments, ci.comments) ||
         notequal(labels, ci.labels))
       return false;
@@ -95,6 +98,7 @@ struct CandidateInfo {
   bool operator!=(const CandidateInfo& ci) {
     if (currentPage != ci.currentPage || totalPages != ci.totalPages ||
         highlighted != ci.highlighted || is_last_page != ci.is_last_page ||
+        row_page_size != ci.row_page_size ||
         notequal(candies, ci.candies) || notequal(comments, ci.comments) ||
         notequal(labels, ci.labels))
       return true;
@@ -116,6 +120,9 @@ struct CandidateInfo {
   std::vector<Text> candies;
   std::vector<Text> comments;
   std::vector<Text> labels;
+  // Zero keeps the original single-page layout. Expanded horizontal windows
+  // put each engine page on its own row without changing any UIStyle settings.
+  int row_page_size;
 };
 
 struct Context {

@@ -1,0 +1,23 @@
+{
+  "repository": "https://github.com/iDvel/rime-ice",
+  "files": {
+    "melt_eng.dict.yaml": "e23bd4ea294d5e04e7b50fbd160fb253e489f44f28c2b8911af276d96db04973",
+    "rime_ice.dict.yaml": "30fa643eec7af585cffacdd9bb6556ce4d17a0e848b83ea1fca3fdcfc5891595",
+    "cn_dicts/41448.dict.yaml": "e95f1484842c52197c539afb6591d99d5df4f23e47d1a059d5e2e97d51ef61b9",
+    "cn_dicts/8105.dict.yaml": "98a974f53d042737ad9fb72715ef5dadb08b719753fbca4c55d44d25bfcb80fc",
+    "cn_dicts/base.dict.yaml": "3e0bd5fac9f21494612d7a8525901bb3d1d4647a05770d0c34ffec6f9108572c",
+    "cn_dicts/ext.dict.yaml": "83f3d895ee6d9790d2e0462cab16c51bc8193413c2e7bca44f534808d55e4fa6",
+    "cn_dicts/others.dict.yaml": "6a6b1a77d94c7cdf9203cf426e67f350215d2d73259fe3769c97d2a18f521c28",
+    "cn_dicts/tencent.dict.yaml": "dcc947386d4a3affd1ff0c3ecf27b926520c08d0da07a466a6bff9d24a8d23b8",
+    "en_dicts/cn_en.txt": "e52ffc88598eb3d4db476a10064df3e8bbb6c23bc4c3969723f3dfab45ad4089",
+    "en_dicts/cn_en_abc.txt": "3f53416ff5acebeb564ab894c10b33cd2b212bd6520012f62b6b9db324c1e9e8",
+    "en_dicts/cn_en_double_pinyin.txt": "eb91037140fefa1a9f62141f2e64e50da54a7aaabd58d40d0c03e06a8ec45943",
+    "en_dicts/cn_en_flypy.txt": "edeee1d7a84b378a248a3ea1384f22dcfde64694caee87fe05901a09a90cfc6f",
+    "en_dicts/cn_en_jiajia.txt": "d79db38e8202b0ec0bcce60310d3a50df6ea03a8dcbc69c128f073485dd659a5",
+    "en_dicts/cn_en_mspy.txt": "c21e2ea1c50e6fc718075876dec3efbaccd920767864240a814a1213825da5d0",
+    "en_dicts/cn_en_sogou.txt": "3aaf228f9a9816dd1685cbeecb8ec47b25bd8db44d71adc99987d13f56e9eaea",
+    "en_dicts/cn_en_ziguang.txt": "401670289d24c6e02bdc197cf9d597636b340f84c49dac42596cbe94a64a995d",
+    "en_dicts/en.dict.yaml": "80a973b989f275064a88341709d225b1ddd6cea10756c482e76d60fce9b73cb1",
+    "en_dicts/en_ext.dict.yaml": "5b761277c9d8d0d0ee2820bbebcf587032ed0202ea11ebdd906e034ec1daa326"
+  }
+}

@@ -37,6 +37,12 @@ void ContextUpdater::Store(Deserializer::KeyType const& k,
     _StoreCand(k, value);
     return;
   }
+  if (k[1] == L"row_page_size") {
+    const int page_size = _wtoi(value.c_str());
+    m_pTarget->p_context->cinfo.row_page_size =
+        page_size >= 0 && page_size <= 10 ? page_size : 0;
+    return;
+  }
 }
 
 void ContextUpdater::_StoreText(Text& target,
@@ -70,6 +76,7 @@ void ContextUpdater::_StoreText(Text& target,
 void ContextUpdater::_StoreCand(Deserializer::KeyType k,
                                 std::wstring const& value) {
   CandidateInfo& cinfo = m_pTarget->p_context->cinfo;
+  cinfo.row_page_size = 0;
   std::wstringstream ss(value);
   boost::archive::text_wiarchive ia(ss);
 

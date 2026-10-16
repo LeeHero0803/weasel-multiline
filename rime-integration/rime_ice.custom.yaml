@@ -1,0 +1,14 @@
+# Context reorder enabled; prediction disabled; native Weasel handles row navigation.
+patch:
+  engine/processors/@before 0: lua_processor@*wanxiang.context_reorder*P
+  engine/filters/@before 7: lua_filter@*wanxiang.context_reorder*F
+  switches/+:
+  - name: context_reorder
+    states:
+    - 上下文关
+    - 上下文开
+    reset: 1
+  context_reorder:
+    db_name: rime_ice_context_reorder
+    context_timeout: 5000
+    enable_fallback_reorder: true

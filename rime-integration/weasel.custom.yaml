@@ -1,0 +1,5 @@
+# Merge these entries into an existing patch to preserve fonts and colors.
+patch:
+  style/layout/corner_radius: 0
+  style/layout/hilited_corner_radius: 0
+  style/layout/round_corner: 0
